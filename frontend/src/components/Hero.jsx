@@ -2,7 +2,15 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, Play } from 'lucide-react';
 
-const Hero = () => {
+const Hero = ({ onAnalyse }) => {
+  const [localUrl, setLocalUrl] = React.useState('');
+
+  const handleClick = () => {
+    if (onAnalyse && localUrl) {
+      onAnalyse(localUrl);
+    }
+  };
+
   return (
     <section className="hero-section container">
       <motion.div
@@ -53,10 +61,12 @@ const Hero = () => {
       >
         <input 
           type="text" 
-          placeholder="https://research.mit.edu/quantum-computing-breakthrough"
+          value={localUrl}
+          onChange={(e) => setLocalUrl(e.target.value)}
+          placeholder="Paste a link to analyze..."
           className="url-input"
         />
-        <button className="btn-secondary" style={{ padding: '0.5rem 1.5rem', borderRadius: '0.75rem', background: 'rgba(255, 255, 255, 0.05)' }}>
+        <button onClick={handleClick} className="btn-primary">
           Analyse
         </button>
       </motion.div>

@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const Demo = () => {
-  const [url, setUrl] = useState('');
+const Demo = ({ initialUrl, onUrlChange }) => {
   const [question, setQuestion] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isAnswering, setIsAnswering] = useState(false);
   const [answer, setAnswer] = useState('');
   const [error, setError] = useState('');
+
+  // Use props if provided, otherwise fallback to local state logic
+  const url = initialUrl || '';
+  const setUrl = onUrlChange;
 
   const handleAnalyze = async () => {
     if (!url) return;
