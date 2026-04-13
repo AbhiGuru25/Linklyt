@@ -14,7 +14,8 @@ const Demo = () => {
     setIsAnalyzing(true);
     setError('');
     try {
-      const response = await fetch('http://localhost:8000/analyze', {
+      const api_base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const response = await fetch(`${api_base}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
@@ -35,7 +36,8 @@ const Demo = () => {
     setAnswer('');
     setError('');
     try {
-      const response = await fetch('http://localhost:8000/ask', {
+      const api_base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const response = await fetch(`${api_base}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, question }),
