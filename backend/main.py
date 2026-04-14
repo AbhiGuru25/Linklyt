@@ -135,6 +135,27 @@ async def ask_question(req: AskRequest):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
+class AutomateRequest(BaseModel):
+    url: str
+    summary: str
+    answer: str
+    webhook_url: str
+
+
+@app.post("/automate")
+async def automate(req: AutomateRequest):
+    from services.automation import send_to_n8n
+    result = await send_to_n8n({
+        "url": req.url,
+        "summary": req.summary,
+        "ai_answer": req.answer
+    }, req.webhook_url)
+    
+    if result["status"] == "error":
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

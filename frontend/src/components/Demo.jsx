@@ -9,6 +9,44 @@ const Demo = ({ initialUrl, onUrlChange }) => {
   const [summary, setSummary] = useState('');
   const [error, setError] = useState('');
   const [useSearch, setUseSearch] = useState(false);
+  const [isAutomating, setIsAutomating] = useState(false);
+  const [automationSuccess, setAutomationSuccess] = useState(false);
+
+  const handleAutomate = async () => {
+    const webhookUrl = localStorage.getItem('n8n_webhook_url');
+    if (!webhookUrl) {
+      setError("Please set your n8n Webhook URL in Settings (gear icon) first!");
+      return;
+    }
+
+    setIsAutomating(true);
+    setAutomationSuccess(false);
+    try {
+      let api_base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      api_base = api_base.replace(/\/$/, "");
+
+      const response = await fetch(`${api_base}/automate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          url, 
+          summary, 
+          answer,
+          webhook_url: webhookUrl 
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Automation failed');
+      
+      setAutomationSuccess(true);
+      setTimeout(() => setAutomationSuccess(false), 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsAutomating(false);
+    }
+  };
 
   // Use props if provided, otherwise fallback to local state logic
   const url = initialUrl || '';
@@ -187,6 +225,31 @@ const Demo = ({ initialUrl, onUrlChange }) => {
                 }}>
                   {error || answer}
                 </p>
+
+                {answer && !isAnswering && !error && (
+                  <div style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button 
+                      onClick={handleAutomate}
+                      disabled={isAutomating}
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '0.5rem', 
+                        background: automationSuccess ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                        border: automationSuccess ? '1px solid #22c55e' : '1px solid rgba(255, 255, 255, 0.1)',
+                        color: automationSuccess ? '#22c55e' : 'var(--text-secondary)',
+                        padding: '0.4rem 0.8rem',
+                        borderRadius: '0.6rem',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {isAutomating ? 'Sending...' : automationSuccess ? '✓ Sent to n8n' : '⚡ Automate'}
+                    </button>
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

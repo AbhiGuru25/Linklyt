@@ -1,7 +1,7 @@
-import React from 'react';
 import { motion } from 'framer-motion';
+import { Settings } from 'lucide-react';
 
-const Navbar = () => {
+const Navbar = ({ onOpenSettings }) => {
   return (
     <motion.nav 
       initial={{ y: -100 }}
@@ -19,9 +19,25 @@ const Navbar = () => {
         <a href="#pricing" className="text-sm font-medium" style={{ color: 'var(--text-secondary)', textDecoration: 'none' }}>Pricing</a>
       </div>
 
-      <button className="btn-primary text-sm">
-        Get started free
-      </button>
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <button 
+          onClick={onOpenSettings}
+          style={{ 
+            background: 'none', 
+            border: 'none', 
+            color: 'var(--text-secondary)', 
+            cursor: 'pointer',
+            padding: '0.5rem',
+            display: 'flex',
+            alignItems: 'center'
+          }}
+        >
+          <Settings size={20} />
+        </button>
+        <button className="btn-primary text-sm">
+          Get started free
+        </button>
+      </div>
     </motion.nav>
   );
 };
