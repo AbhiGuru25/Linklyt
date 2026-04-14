@@ -17,7 +17,10 @@ const Demo = ({ initialUrl, onUrlChange }) => {
     setIsAnalyzing(true);
     setError('');
     try {
-      const api_base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      let api_base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      // Safety: Remove trailing slash if present
+      api_base = api_base.replace(/\/$/, "");
+      
       const response = await fetch(`${api_base}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -39,7 +42,10 @@ const Demo = ({ initialUrl, onUrlChange }) => {
     setAnswer('');
     setError('');
     try {
-      const api_base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      let api_base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      // Safety: Remove trailing slash if present
+      api_base = api_base.replace(/\/$/, "");
+
       const response = await fetch(`${api_base}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
