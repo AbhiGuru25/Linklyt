@@ -11,6 +11,11 @@ load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
+if not SUPABASE_URL or not SUPABASE_URL.startswith("http"):
+    raise ValueError(f"CRITICAL: SUPABASE_URL is missing or malformed. Current value: '{SUPABASE_URL}'")
+if not SUPABASE_KEY:
+    raise ValueError("CRITICAL: SUPABASE_SERVICE_KEY is missing.")
+
 _HEADERS = {
     "apikey": SUPABASE_KEY,
     "Authorization": f"Bearer {SUPABASE_KEY}",
