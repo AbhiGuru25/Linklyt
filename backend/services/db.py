@@ -26,17 +26,19 @@ async def is_url_cached(url: str) -> bool:
             headers=_HEADERS,
             params={"url": f"eq.{url}", "select": "url"},
         )
+        resp.raise_for_status()
         return len(resp.json()) > 0
 
 
 async def cache_url(url: str, title: str = "") -> None:
     """Mark a URL as indexed."""
     async with httpx.AsyncClient() as client:
-        await client.post(
+        resp = await client.post(
             f"{SUPABASE_URL}/rest/v1/url_cache",
             headers={**_HEADERS, "Prefer": "resolution=merge-duplicates"},
             json={"url": url, "title": title},
         )
+        resp.raise_for_status()
 
 
 async def upsert_documents(docs: list[dict]) -> None:
@@ -45,11 +47,12 @@ async def upsert_documents(docs: list[dict]) -> None:
     Each doc: {"content": str, "metadata": dict, "embedding": list[float]}
     """
     async with httpx.AsyncClient(timeout=30.0) as client:
-        await client.post(
+        resp = await client.post(
             f"{SUPABASE_URL}/rest/v1/documents",
             headers=_HEADERS,
             json=docs,
         )
+        resp.raise_for_status()
 
 
 async def similarity_search(embedding: list[float], url: str, k: int = 4) -> list[dict]:
@@ -64,4 +67,5 @@ async def similarity_search(embedding: list[float], url: str, k: int = 4) -> lis
                 "filter": {"source": url},
             },
         )
+        resp.raise_for_status()
         return resp.json()

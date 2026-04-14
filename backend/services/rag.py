@@ -5,10 +5,11 @@ Uses HuggingFace embeddings (local) + Supabase pgvector + Mistral-7B LLM.
 
 import os
 import logging
+import asyncio
 from typing import Optional
 
 from dotenv import load_dotenv
-from langchain_huggingface import HuggingFaceEmbeddings, HuggingFaceEndpoint
+from langchain_huggingface import HuggingFaceEndpoint, HuggingFaceEndpointEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
@@ -21,18 +22,40 @@ from .db import upsert_documents, similarity_search
 load_dotenv()
 logger = logging.getLogger(__name__)
 
+# Model IDs
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 HF_LLM_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
 
-_embeddings: Optional[HuggingFaceEmbeddings] = None
+_embeddings: Optional[HuggingFaceEndpointEmbeddings] = None
 _llm: Optional[HuggingFaceEndpoint] = None
 
 
-def get_embeddings() -> HuggingFaceEmbeddings:
+async def embed_with_retry(embed_model: HuggingFaceEndpointEmbeddings, texts: list[str], max_retries: int = 5) -> list[list[float]]:
+    """Handles HuggingFace API cold starts by retrying with backoff."""
+    for attempt in range(max_retries):
+        try:
+            # Note: embed_documents is synchronous in the current LangChain implementation
+            return embed_model.embed_documents(texts)
+        except Exception as e:
+            err_msg = str(e).lower()
+            if ("loading" in err_msg or "503" in err_msg) and attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 10
+                logger.info(f"HuggingFace model is loading. Retrying in {wait_time}s... (Attempt {attempt+1}/{max_retries})")
+                await asyncio.sleep(wait_time)
+            else:
+                logger.error(f"Embedding failed after {attempt+1} attempts: {str(e)}")
+                raise
+
+
+def get_embeddings() -> HuggingFaceEndpointEmbeddings:
     global _embeddings
     if _embeddings is None:
-        logger.info("Loading embedding model (first time may take ~30s)...")
-        _embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+        hf_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+        logger.info("Initializing Cloud Embeddings (HuggingFace API mode)...")
+        _embeddings = HuggingFaceEndpointEmbeddings(
+            model=EMBED_MODEL,
+            huggingfacehub_api_token=hf_token
+        )
     return _embeddings
 
 
@@ -74,7 +97,10 @@ async def stream_ask(url: str, question: str, use_search: bool = False):
     """
     llm = get_llm()
     embed_model = get_embeddings()
-    query_embedding = embed_model.embed_query(question)
+    
+    # Use retry for query embedding as well
+    embeddings = await embed_with_retry(embed_model, [question])
+    query_embedding = embeddings[0]
     
     # Get local context
     results = await similarity_search(query_embedding, url, k=4)
@@ -110,7 +136,9 @@ async def ingest(url: str, text: str) -> tuple[int, str]:
 
     embed_model = get_embeddings()
     texts = [d.page_content for d in docs]
-    embeddings = embed_model.embed_documents(texts)
+    
+    # Use the new retry logic for ingestion
+    embeddings = await embed_with_retry(embed_model, texts)
 
     records = [
         {

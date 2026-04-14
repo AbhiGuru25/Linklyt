@@ -49,9 +49,17 @@ app.add_middleware(
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     logger.error(f"Global error: {str(exc)}", exc_info=True)
+    
+    # Check for specific error types to provide cleaner messages
+    detail = "Internal Server Error"
+    if "503" in str(exc) or "loading" in str(exc).lower():
+        detail = "AI model is warming up. Please try again in 30 seconds."
+    elif "supabase" in str(exc).lower() or "httpx" in str(exc).lower():
+        detail = "Database connection issue. Please check your Supabase settings."
+    
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal Server Error", "message": str(exc)},
+        content={"detail": detail, "message": str(exc)},
         headers={
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "*",
