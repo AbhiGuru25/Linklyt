@@ -51,7 +51,10 @@ const Demo = ({ initialUrl, onUrlChange }) => {
   // Use props if provided, otherwise fallback to local state logic
   const url = initialUrl || '';
   const setUrl = onUrlChange;
-
+  const handleAnalyze = async () => {
+    if (!url) return;
+    setIsAnalyzing(true);
+    setError('');
     try {
       let api_base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
       api_base = api_base.replace(/\/$/, "");
