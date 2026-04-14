@@ -21,7 +21,7 @@ from pydantic import BaseModel, HttpUrl
 from dotenv import load_dotenv
 
 from services.scraper import scrape_url
-from services.rag import ingest, ask
+from services.rag import ingest
 from services.db import is_url_cached, cache_url
 
 load_dotenv()
