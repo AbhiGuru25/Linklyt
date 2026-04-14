@@ -67,22 +67,22 @@ class AnalyzeRequest(BaseModel):
     force_refresh: bool = False
 
 
+from fastapi.responses import StreamingResponse
+import json
+from typing import Optional
+
 class AnalyzeResponse(BaseModel):
     url: str
     chunks_indexed: int
     cached: bool
+    summary: Optional[str] = None
     message: str
 
 
 class AskRequest(BaseModel):
     url: HttpUrl
     question: str
-
-
-class AskResponse(BaseModel):
-    url: str
-    question: str
-    answer: str
+    use_search: bool = False
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
@@ -96,7 +96,6 @@ async def health():
 async def analyze(req: AnalyzeRequest):
     url_str = str(req.url)
 
-    # Check cache — skip re-scraping unless force_refresh is requested
     if not req.force_refresh and await is_url_cached(url_str):
         return AnalyzeResponse(
             url=url_str,
@@ -105,46 +104,35 @@ async def analyze(req: AnalyzeRequest):
             message="URL already indexed. Ready to answer questions.",
         )
 
-    # Scrape the page
-    logger.info(f"Scraping: {url_str}")
     text = await scrape_url(url_str)
     if not text:
-        raise HTTPException(
-            status_code=422,
-            detail="Could not extract text from this URL. Try a different page.",
-        )
+        raise HTTPException(status_code=422, detail="Could not extract text.")
 
-    # Chunk, embed, and store
-    chunks = await ingest(url_str, text)
-
-    # Cache the URL so we don't re-scrape it
+    chunks, summary = await ingest(url_str, text)
     await cache_url(url_str)
 
     return AnalyzeResponse(
         url=url_str,
         chunks_indexed=chunks,
         cached=False,
-        message=f"Successfully indexed {chunks} chunks. Ready to answer questions.",
+        summary=summary,
+        message=f"Success! Indexed {chunks} chunks and generated a summary.",
     )
 
 
-@app.post("/ask", response_model=AskResponse)
+@app.post("/ask")
 async def ask_question(req: AskRequest):
     url_str = str(req.url)
 
     if not await is_url_cached(url_str):
-        raise HTTPException(
-            status_code=404,
-            detail="URL not yet indexed. Please click Analyse first.",
-        )
+        raise HTTPException(status_code=404, detail="URL not yet indexed.")
 
-    answer = await ask(url_str, req.question)
+    async def event_generator():
+        from services.rag import stream_ask
+        async for token in stream_ask(url_str, req.question, req.use_search):
+            yield f"data: {json.dumps({'token': token})}\n\n"
 
-    return AskResponse(
-        url=url_str,
-        question=req.question,
-        answer=answer,
-    )
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 # ─── Entry point ─────────────────────────────────────────────────────────────

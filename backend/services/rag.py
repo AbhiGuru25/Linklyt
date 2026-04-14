@@ -11,6 +11,10 @@ from dotenv import load_dotenv
 from langchain_huggingface import HuggingFaceEmbeddings, HuggingFaceEndpoint
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_community.tools import DuckDuckGoSearchRun
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain import hub
 
 from .db import upsert_documents, similarity_search
 
@@ -55,10 +59,51 @@ def chunk_text(text: str, url: str) -> list[Document]:
     return [Document(page_content=c, metadata={"source": url}) for c in chunks]
 
 
-async def ingest(url: str, text: str) -> int:
+async def summarize_text(text: str) -> str:
+    """Generate a brief summary of the text."""
+    llm = get_llm()
+    prompt = f"Summarize the following text in exactly three bullet points. Focus on the core value proposition and main topics. \n\nText: {text[:4000]} \n\nSummary:"
+    summary = await llm.ainvoke(prompt)
+    return summary.strip()
+
+
+async def stream_ask(url: str, question: str, use_search: bool = False):
     """
-    Chunk text, generate embeddings locally, and store in Supabase.
-    Returns the number of chunks stored.
+    Search relevant chunks and generate a streaming answer.
+    If use_search is True, it allows the agent to search the web.
+    """
+    llm = get_llm()
+    embed_model = get_embeddings()
+    query_embedding = embed_model.embed_query(question)
+    
+    # Get local context
+    results = await similarity_search(query_embedding, url, k=4)
+    context = "\n\n".join([r["content"] for r in results]) if results else "No local data found."
+
+    if not use_search:
+        # Standard RAG but streaming
+        prompt = f"Use ONLY the following context to answer the question. If answer is not there, say you don't know.\nContext: {context}\nQuestion: {question}\nAnswer:"
+        async for chunk in llm.astream(prompt):
+            yield chunk
+    else:
+        # Agentic Search (Simplified for smaller models)
+        search = DuckDuckGoSearchRun()
+        search_results = search.run(question)
+        
+        prompt = f"""You are a research assistant. Use the page context and the search results to answer.
+        Page Context: {context}
+        Latest Web Info: {search_results}
+        Question: {question}
+        Answer:"""
+        
+        async for chunk in llm.astream(prompt):
+            yield chunk
+
+
+async def ingest(url: str, text: str) -> tuple[int, str]:
+    """
+    Chunk text, store in Supabase, and generate a summary.
+    Returns (chunks_count, summary).
     """
     docs = chunk_text(text, url)
     logger.info(f"Ingesting {len(docs)} chunks for {url}")
@@ -77,33 +122,8 @@ async def ingest(url: str, text: str) -> int:
     ]
 
     await upsert_documents(records)
-    return len(docs)
-
-
-async def ask(url: str, question: str) -> str:
-    """
-    Find relevant chunks for the given URL and generate an AI answer.
-    """
-    embed_model = get_embeddings()
-    query_embedding = embed_model.embed_query(question)
-
-    results = await similarity_search(query_embedding, url, k=4)
-
-    if not results:
-        return "I couldn't find any relevant information about that on this page."
-
-    context = "\n\n".join([r["content"] for r in results])
-
-    prompt = f"""You are a helpful assistant that answers questions about web pages.
-Use ONLY the provided context to answer. If the answer isn't in the context, say "I couldn't find that on this page."
-
-Context:
-{context}
-
-Question: {question}
-
-Answer:"""
-
-    llm = get_llm()
-    answer = llm.invoke(prompt)
-    return answer.strip()
+    
+    # Generate summary after successful ingestion
+    summary = await summarize_text(text)
+    
+    return len(docs), summary

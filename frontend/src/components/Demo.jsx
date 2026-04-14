@@ -6,19 +6,16 @@ const Demo = ({ initialUrl, onUrlChange }) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isAnswering, setIsAnswering] = useState(false);
   const [answer, setAnswer] = useState('');
+  const [summary, setSummary] = useState('');
   const [error, setError] = useState('');
+  const [useSearch, setUseSearch] = useState(false);
 
   // Use props if provided, otherwise fallback to local state logic
   const url = initialUrl || '';
   const setUrl = onUrlChange;
 
-  const handleAnalyze = async () => {
-    if (!url) return;
-    setIsAnalyzing(true);
-    setError('');
     try {
       let api_base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      // Safety: Remove trailing slash if present
       api_base = api_base.replace(/\/$/, "");
       
       const response = await fetch(`${api_base}/analyze`, {
@@ -28,6 +25,8 @@ const Demo = ({ initialUrl, onUrlChange }) => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || 'Failed to analyze URL');
+      
+      setSummary(data.summary);
       setAnswer(data.message);
     } catch (err) {
       setError(err.message);
@@ -43,17 +42,42 @@ const Demo = ({ initialUrl, onUrlChange }) => {
     setError('');
     try {
       let api_base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      // Safety: Remove trailing slash if present
       api_base = api_base.replace(/\/$/, "");
 
       const response = await fetch(`${api_base}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, question }),
+        body: JSON.stringify({ url, question, use_search: useSearch }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || 'Failed to get answer');
-      setAnswer(data.answer);
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || 'Failed to get answer');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullAnswer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              fullAnswer += data.token;
+              setAnswer(fullAnswer);
+            } catch (e) {
+              console.error("Error parsing stream chunk", e);
+            }
+          }
+        }
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -90,15 +114,29 @@ const Demo = ({ initialUrl, onUrlChange }) => {
             </button>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <input 
               type="text" 
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="What are the main risks of AI?"
               className="url-input glass"
-              style={{ borderRadius: '0.75rem', padding: '0.75rem 1.25rem', fontSize: '0.875rem' }}
+              style={{ borderRadius: '0.75rem', padding: '0.75rem 1.25rem', fontSize: '0.875rem', flex: 1 }}
             />
+            <button 
+              onClick={() => setUseSearch(!useSearch)}
+              style={{ 
+                padding: '0.75rem', 
+                borderRadius: '0.75rem', 
+                background: useSearch ? 'rgba(6, 182, 212, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                border: useSearch ? '1px solid #06b6d4' : '1px solid rgba(255, 255, 255, 0.1)',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              title="Deep Search Mode"
+            >
+              🌐
+            </button>
             <button 
               onClick={handleAsk}
               disabled={isAnswering || isAnalyzing}
@@ -108,6 +146,23 @@ const Demo = ({ initialUrl, onUrlChange }) => {
               {isAnswering ? 'Analysing...' : 'Ask'}
             </button>
           </div>
+
+          {summary && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              style={{ 
+                padding: '1rem', 
+                background: 'rgba(6, 182, 212, 0.05)', 
+                borderRadius: '1rem', 
+                borderLeft: '4px solid #06b6d4',
+                fontSize: '0.875rem' 
+              }}
+            >
+              <strong style={{ display: 'block', marginBottom: '0.5rem', color: '#06b6d4' }}>Auto Summary:</strong>
+              <div style={{ whiteSpace: 'pre-line' }}>{summary}</div>
+            </motion.div>
+          )}
 
           <AnimatePresence>
             {(error || answer) && (
