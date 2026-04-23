@@ -137,14 +137,21 @@ async def ingest(url: str, text: str) -> tuple[int, str]:
     embed_model = get_embeddings()
     texts = [d.page_content for d in docs]
     
-    # Use the new retry logic for ingestion
-    embeddings = await embed_with_retry(embed_model, texts)
+    # --- Batching Logic: Avoid Cloud API payload limits ---
+    batch_size = 20
+    all_embeddings = []
+    
+    for i in range(0, len(texts), batch_size):
+        batch_texts = texts[i : i + batch_size]
+        logger.info(f"Embedding batch {i//batch_size + 1} (Size: {len(batch_texts)})...")
+        batch_embeddings = await embed_with_retry(embed_model, batch_texts)
+        all_embeddings.extend(batch_embeddings)
 
     records = [
         {
             "content": docs[i].page_content,
             "metadata": docs[i].metadata,
-            "embedding": embeddings[i],
+            "embedding": all_embeddings[i],
         }
         for i in range(len(docs))
     ]
