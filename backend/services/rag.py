@@ -17,8 +17,8 @@ from langchain_community.tools import DuckDuckGoSearchRun
 try:
     from langchain.agents import AgentExecutor, create_react_agent
 except ImportError:
-    # Cross-version compatibility for LangChain 0.3+
-    from langchain.agents.agent import AgentExecutor
+    # Cross-version compatibility for certain LangChain 0.3+ environments
+    from langchain.agents.executor import AgentExecutor
     from langchain.agents import create_react_agent
 from langchain import hub
 
