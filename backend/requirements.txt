@@ -9,13 +9,12 @@ langchain-community>=0.3.0
 langchain-huggingface>=0.1.2
 langchain-core>=0.3.0
 
-# HuggingFace
+# HuggingFace (Cloud AI Mode - No Local Weights)
 huggingface-hub>=0.26.0
-sentence-transformers==3.1.1
 
-# Supabase
+# Supabase (Direct REST API Mode)
 supabase==2.7.4
-vecs==0.4.4
+# vecs removed — using direct RPC calls for speed
 
 # Scraping
 trafilatura>=1.12.0
