@@ -22,7 +22,7 @@ const Demo = ({ initialUrl, onUrlChange }) => {
     setIsAutomating(true);
     setAutomationSuccess(false);
     try {
-      let api_base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      let api_base = import.meta.env.VITE_API_URL || 'https://linklyt-backend.onrender.com';
       api_base = api_base.replace(/\/$/, "");
 
       const response = await fetch(`${api_base}/automate`, {
@@ -42,7 +42,7 @@ const Demo = ({ initialUrl, onUrlChange }) => {
       setAutomationSuccess(true);
       setTimeout(() => setAutomationSuccess(false), 3000);
     } catch (err) {
-      setError(err.message);
+      setError(String(err.message || err));
     } finally {
       setIsAutomating(false);
     }
@@ -56,7 +56,7 @@ const Demo = ({ initialUrl, onUrlChange }) => {
     setIsAnalyzing(true);
     setError('');
     try {
-      let api_base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      let api_base = import.meta.env.VITE_API_URL || 'https://linklyt-backend.onrender.com';
       api_base = api_base.replace(/\/$/, "");
       
       const response = await fetch(`${api_base}/analyze`, {
@@ -70,7 +70,7 @@ const Demo = ({ initialUrl, onUrlChange }) => {
       setSummary(data.summary);
       setAnswer(data.message);
     } catch (err) {
-      setError(err.message);
+      setError(String(err.message || err));
     } finally {
       setIsAnalyzing(false);
     }
@@ -82,7 +82,7 @@ const Demo = ({ initialUrl, onUrlChange }) => {
     setAnswer('');
     setError('');
     try {
-      let api_base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      let api_base = import.meta.env.VITE_API_URL || 'https://linklyt-backend.onrender.com';
       api_base = api_base.replace(/\/$/, "");
 
       const response = await fetch(`${api_base}/ask`, {
@@ -120,7 +120,7 @@ const Demo = ({ initialUrl, onUrlChange }) => {
         }
       }
     } catch (err) {
-      setError(err.message);
+      setError(String(err.message || err));
     } finally {
       setIsAnswering(false);
     }
