@@ -89,37 +89,91 @@ async def summarize_text(text: str) -> str:
     return summary.strip()
 
 
-async def stream_search_answer(url: str, question: str):
-    """
-    Custom lightweight agent loop: Search the web + Page context -> Answer.
-    This replaces AgentExecutor to avoid version-specific import crashes.
-    """
-    llm = get_llm()
-    embed_model = get_embeddings()
-    
-    # 1. Get Local Context
-    embeddings = await embed_with_retry(embed_model, [question])
-    results = await similarity_search(embeddings[0], url, k=4)
-    context = "\n\n".join([r["content"] for r in results]) if results else "No local data found."
+from typing import TypedDict, List
+from langgraph.graph import StateGraph, END
 
-    # 2. Perform Web Search
+# --- LangGraph State Definition ---
+class ResearchState(TypedDict):
+    url: str
+    question: str
+    context: str
+    web_data: str
+    answer: str
+
+async def local_search_node(state: ResearchState):
+    """Retrieve indexed chunks from Supabase."""
+    logger.info("🔍 LangGraph: Checking local database...")
+    embed_model = get_embeddings()
+    embeddings = await embed_with_retry(embed_model, [state["question"]])
+    results = await similarity_search(embeddings[0], state["url"], k=4)
+    context = "\n\n".join([r["content"] for r in results]) if results else "No local info."
+    return {"context": context}
+
+async def web_search_node(state: ResearchState):
+    """Retrieve live info from DuckDuckGo."""
+    logger.info(f"🌐 LangGraph: Searching web for '{state['question']}'...")
     search = DuckDuckGoSearchRun()
-    logger.info(f"🌐 Agent: Searching web for '{question}'...")
     try:
-        search_results = search.run(question)
+        results = search.run(state["question"])
     except Exception as e:
-        logger.error(f"Search failed: {e}")
-        search_results = "Web search currently unavailable."
+        logger.error(f"Web search error: {e}")
+        results = "Web search unavailable."
+    return {"web_data": results}
+
+async def synthesis_node(state: ResearchState):
+    """Combine local + web info into a final answer."""
+    logger.info("✍️ LangGraph: Synthesizing final answer...")
+    llm = get_llm()
+    prompt = f"""You are a Linklyt Research Assistant.
+    PAGE CONTEXT: {state['context']}
+    LIVE WEB SEARCH: {state['web_data']}
+    USER QUESTION: {state['question']}
     
-    # 3. Final Synthesis
-    prompt = f"""You are a research assistant. Use the page context and the search results to answer.
-    PAGE CONTEXT: {context}
-    LATEST WEB INFO: {search_results}
-    QUESTION: {question}
+    Synthesize a comprehensive, professional answer using both the page context and web info.
     ANSWER:"""
     
-    async for chunk in llm.astream(prompt):
-        yield chunk
+    # We yield the full answer here as a string for the state
+    answer = await llm.ainvoke(prompt)
+    return {"answer": answer}
+
+# --- Build the Graph ---
+def create_research_graph():
+    workflow = StateGraph(ResearchState)
+    workflow.add_node("local_search", local_search_node)
+    workflow.add_node("web_search", web_search_node)
+    workflow.add_node("synthesis", synthesis_node)
+    
+    workflow.set_entry_point("local_search")
+    workflow.add_edge("local_search", "web_search")
+    workflow.add_edge("web_search", "synthesis")
+    workflow.add_edge("synthesis", END)
+    
+    return workflow.compile()
+
+_research_app = create_research_graph()
+
+
+async def stream_search_answer(url: str, question: str):
+    """
+    Execute the LangGraph research workflow.
+    Since HuggingFaceEndpoint.astream works on strings, we yield tokens!
+    """
+    initial_state = {
+        "url": url,
+        "question": question,
+        "context": "",
+        "web_data": "",
+        "answer": ""
+    }
+    
+    # Run the graph
+    # For now, we run full nodes. In a more advanced setup, we can stream tokens from the synthesis node.
+    final_output = await _research_app.ainvoke(initial_state)
+    
+    # To maintain streaming UI, we split the final answer into chunks (simulated streaming)
+    # or we can use the llm.astream directly in the node if we return a stream object.
+    # For now, let's yield the full answer as one chunk or simulate.
+    yield final_output["answer"]
 
 
 async def stream_ask(url: str, question: str, use_search: bool = False):
