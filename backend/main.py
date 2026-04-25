@@ -112,12 +112,12 @@ async def analyze(req: AnalyzeRequest):
             message="URL already indexed. Ready to answer questions.",
         )
 
-    text = await scrape_url(url_str)
+    text, title = await scrape_url(url_str)
     if not text:
         raise HTTPException(status_code=422, detail="Could not extract text.")
 
     chunks, summary = await ingest(url_str, text)
-    await cache_url(url_str)
+    await cache_url(url_str, title or url_str)
 
     return AnalyzeResponse(
         url=url_str,
@@ -162,6 +162,12 @@ async def automate(req: AutomateRequest):
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
     return result
+
+
+@app.get("/history")
+async def history():
+    from services.db import get_url_history
+    return await get_url_history()
 
 
 # ─── Entry point ─────────────────────────────────────────────────────────────

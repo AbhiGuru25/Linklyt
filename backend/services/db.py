@@ -57,6 +57,18 @@ async def cache_url(url: str, title: str = "") -> None:
         resp.raise_for_status()
 
 
+async def get_url_history() -> list[dict]:
+    """Retrieve all indexed URLs from the cache."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{SUPABASE_URL}/rest/v1/url_cache",
+            headers=_HEADERS,
+            params={"select": "*", "order": "created_at.desc"},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
 async def upsert_documents(docs: list[dict]) -> None:
     """
     Insert document chunks with their embeddings into Supabase.

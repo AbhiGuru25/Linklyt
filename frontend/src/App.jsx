@@ -7,6 +7,7 @@ import Demo from './components/Demo';
 import SettingsModal from './components/SettingsModal';
 import Pricing from './components/Pricing';
 import Footer from './components/Footer';
+import History from './components/History';
 
 function App() {
   const [sharedUrl, setSharedUrl] = React.useState('');
@@ -27,6 +28,7 @@ function App() {
       <Hero onAnalyse={handleHeroAnalyse} />
       <Mockup />
       <Features />
+      <History onSelectUrl={handleHeroAnalyse} />
       <Demo initialUrl={sharedUrl} onUrlChange={setSharedUrl} />
       <Pricing />
       <Footer />

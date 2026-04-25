@@ -19,12 +19,10 @@ def _url_hash(url: str) -> str:
     return hashlib.sha256(url.encode()).hexdigest()
 
 
-async def scrape_url(url: str) -> Optional[str]:
+async def scrape_url(url: str) -> tuple[Optional[str], Optional[str]]:
     """
-    Attempts to scrape clean text from a URL.
-    1. Tries Trafilatura (fast, no browser).
-    2. Falls back to Playwright for JS-heavy pages.
-    Returns the cleaned text or None on failure.
+    Attempts to scrape clean text and title from a URL.
+    Returns (cleaned_text, page_title).
     """
     # --- Attempt 1: Trafilatura (fast) ---
     try:
@@ -35,9 +33,11 @@ async def scrape_url(url: str) -> Optional[str]:
                 include_comments=False,
                 include_tables=False,
             )
+            title = trafilatura.extract_metadata(downloaded).title if downloaded else None
+            
             if text and len(text.strip()) > 200:
                 logger.info(f"[Trafilatura] Scraped {url}: {len(text)} chars")
-                return text.strip()
+                return text.strip(), title
     except Exception as e:
         logger.warning(f"[Trafilatura] Failed for {url}: {e}")
 
@@ -48,13 +48,14 @@ async def scrape_url(url: str) -> Optional[str]:
             page = await browser.new_page()
             await page.goto(url, wait_until="networkidle", timeout=30000)
             html = await page.content()
+            title = await page.title()
             await browser.close()
 
             text = trafilatura.extract(html, include_comments=False, include_tables=False)
             if text and len(text.strip()) > 200:
                 logger.info(f"[Playwright] Scraped {url}: {len(text)} chars")
-                return text.strip()
+                return text.strip(), title
     except Exception as e:
         logger.error(f"[Playwright] Failed for {url}: {e}")
 
-    return None
+    return None, None
