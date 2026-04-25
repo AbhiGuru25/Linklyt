@@ -14,31 +14,6 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.tools import DuckDuckGoSearchRun
-import importlib
-try:
-    # Option 1: Standard Modern path
-    from langchain.agents import AgentExecutor, create_react_agent
-except ImportError:
-    # Option 2: Search likely locations in newer versions (Self-Healing)
-    AgentExecutor = None
-    create_react_agent = None
-    for sub in ["executor", "agent", "base", "loading"]:
-        try:
-            mod = importlib.import_module(f"langchain.agents.{sub}")
-            if hasattr(mod, "AgentExecutor"):
-                AgentExecutor = mod.AgentExecutor
-                if not create_react_agent and hasattr(mod, "create_react_agent"):
-                    create_react_agent = mod.create_react_agent
-                break
-        except ImportError:
-            continue
-    
-    # Final Fallback check
-    if not AgentExecutor:
-        from langchain.agents.executor import AgentExecutor # Last attempt
-    if not create_react_agent:
-        from langchain.agents import create_react_agent
-
 from langchain import hub
 
 from .db import upsert_documents, similarity_search
@@ -114,40 +89,59 @@ async def summarize_text(text: str) -> str:
     return summary.strip()
 
 
-async def stream_ask(url: str, question: str, use_search: bool = False):
+async def stream_search_answer(url: str, question: str):
     """
-    Search relevant chunks and generate a streaming answer.
-    If use_search is True, it allows the agent to search the web.
+    Custom lightweight agent loop: Search the web + Page context -> Answer.
+    This replaces AgentExecutor to avoid version-specific import crashes.
     """
     llm = get_llm()
     embed_model = get_embeddings()
     
-    # Use retry for query embedding as well
+    # 1. Get Local Context
     embeddings = await embed_with_retry(embed_model, [question])
-    query_embedding = embeddings[0]
-    
-    # Get local context
-    results = await similarity_search(query_embedding, url, k=4)
+    results = await similarity_search(embeddings[0], url, k=4)
     context = "\n\n".join([r["content"] for r in results]) if results else "No local data found."
 
-    if not use_search:
-        # Standard RAG but streaming
-        prompt = f"Use ONLY the following context to answer the question. If answer is not there, say you don't know.\nContext: {context}\nQuestion: {question}\nAnswer:"
-        async for chunk in llm.astream(prompt):
-            yield chunk
-    else:
-        # Agentic Search (Simplified for smaller models)
-        search = DuckDuckGoSearchRun()
+    # 2. Perform Web Search
+    search = DuckDuckGoSearchRun()
+    logger.info(f"🌐 Agent: Searching web for '{question}'...")
+    try:
         search_results = search.run(question)
-        
-        prompt = f"""You are a research assistant. Use the page context and the search results to answer.
-        Page Context: {context}
-        Latest Web Info: {search_results}
-        Question: {question}
-        Answer:"""
-        
-        async for chunk in llm.astream(prompt):
+    except Exception as e:
+        logger.error(f"Search failed: {e}")
+        search_results = "Web search currently unavailable."
+    
+    # 3. Final Synthesis
+    prompt = f"""You are a research assistant. Use the page context and the search results to answer.
+    PAGE CONTEXT: {context}
+    LATEST WEB INFO: {search_results}
+    QUESTION: {question}
+    ANSWER:"""
+    
+    async for chunk in llm.astream(prompt):
+        yield chunk
+
+
+async def stream_ask(url: str, question: str, use_search: bool = False):
+    """
+    Search relevant chunks and generate a streaming answer.
+    """
+    if use_search:
+        async for chunk in stream_search_answer(url, question):
             yield chunk
+        return
+
+    # Standard RAG
+    llm = get_llm()
+    embed_model = get_embeddings()
+    
+    embeddings = await embed_with_retry(embed_model, [question])
+    results = await similarity_search(embeddings[0], url, k=4)
+    context = "\n\n".join([r["content"] for r in results]) if results else "No local data found."
+
+    prompt = f"Use ONLY the following context to answer. If answer is not there, say you don't know.\nContext: {context}\nQuestion: {question}\nAnswer:"
+    async for chunk in llm.astream(prompt):
+        yield chunk
 
 
 async def ingest(url: str, text: str) -> tuple[int, str]:
