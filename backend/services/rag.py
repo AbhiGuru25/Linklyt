@@ -14,12 +14,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.tools import DuckDuckGoSearchRun
-try:
-    from langchain.agents import AgentExecutor, create_react_agent
-except ImportError:
-    # Cross-version compatibility for certain LangChain 0.3+ environments
-    from langchain.agents.executor import AgentExecutor
-    from langchain.agents import create_react_agent
+from langchain.agents import AgentExecutor, create_react_agent
 from langchain import hub
 
 from .db import upsert_documents, similarity_search
