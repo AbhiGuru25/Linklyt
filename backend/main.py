@@ -117,7 +117,9 @@ async def analyze(req: AnalyzeRequest):
         raise HTTPException(status_code=422, detail="Could not extract text.")
 
     chunks, summary = await ingest(url_str, text)
-    await cache_url(url_str, title or url_str)
+    # Truncate title for DB stability
+    safe_title = (title or url_str)[:200]
+    await cache_url(url_str, safe_title)
 
     return AnalyzeResponse(
         url=url_str,

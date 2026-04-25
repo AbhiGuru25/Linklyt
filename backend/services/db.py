@@ -4,9 +4,11 @@ Supabase DB Service — async-compatible client using httpx.
 
 import os
 import httpx
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
@@ -71,16 +73,24 @@ async def get_url_history() -> list[dict]:
 
 async def upsert_documents(docs: list[dict]) -> None:
     """
-    Insert document chunks with their embeddings into Supabase.
-    Each doc: {"content": str, "metadata": dict, "embedding": list[float]}
+    Insert document chunks with their embeddings into Supabase in batches.
+    Prevents HTTP 413 (Payload Too Large) errors.
     """
+    batch_size = 50
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(
-            f"{SUPABASE_URL}/rest/v1/documents",
-            headers=_HEADERS,
-            json=docs,
-        )
-        resp.raise_for_status()
+        for i in range(0, len(docs), batch_size):
+            batch = docs[i : i + batch_size]
+            logger.info(f"📤 Supabase: Uploading batch {i//batch_size + 1} ({len(batch)} chunks)...")
+            try:
+                resp = await client.post(
+                    f"{SUPABASE_URL}/rest/v1/documents",
+                    headers=_HEADERS,
+                    json=batch,
+                )
+                resp.raise_for_status()
+            except Exception as e:
+                logger.error(f"❌ Supabase batch upload failed: {e}")
+                raise
 
 
 async def similarity_search(embedding: list[float], url: str, k: int = 4) -> list[dict]:
