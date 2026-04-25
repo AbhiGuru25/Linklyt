@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Book, ExternalLink, Clock, RefreshCw, Trash2, ChevronRight } from 'lucide-react';
+import { Book, ExternalLink, Clock, RefreshCw, ChevronRight } from 'lucide-react';
 
 const History = ({ onSelectUrl }) => {
   const [history, setHistory] = useState([]);
@@ -19,7 +19,7 @@ const History = ({ onSelectUrl }) => {
       setError(null);
     } catch (err) {
       console.error('History Error:', err);
-      setError('Could not load your history. Is the server running?');
+      setError('Could not load library.');
     } finally {
       setIsLoading(false);
     }
@@ -32,10 +32,7 @@ const History = ({ onSelectUrl }) => {
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
     }).format(date);
   };
 
@@ -49,128 +46,79 @@ const History = ({ onSelectUrl }) => {
   };
 
   return (
-    <section id="history" className="py-24 relative overflow-hidden bg-[#0A0A0B]">
-      {/* Background Orbs */}
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/2" />
-      <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[120px] translate-y-1/2 -translate-x-1/2" />
-
-      <div className="max-w-7xl mx-auto px-6 relative z-10">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
-          <div>
+    <section className="history-section">
+      <div className="container">
+        <div className="history-header">
+          <div className="history-title-group">
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 mb-4"
+              initial={{ opacity: 0, x: -20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              className="logo-container"
+              style={{ marginBottom: '1rem' }}
             >
-              <Book className="w-4 h-4 text-blue-400" />
-              <span className="text-xs font-medium text-blue-400 uppercase tracking-wider">Your Library</span>
+              <div className="logo-icon" style={{ width: '1.5rem', height: '1.5rem' }}>
+                <Book className="w-3 h-3 text-white" />
+              </div>
+              <span className="gradient-text font-bold text-xs uppercase tracking-tight">Your Library</span>
             </motion.div>
-            <motion.h2
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.1 }}
-              className="text-4xl md:text-5xl font-bold text-white mb-4"
-            >
-              Research History
-            </motion.h2>
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.2 }}
-              className="text-gray-400 max-w-2xl"
-            >
-              Access your previous intelligence reports. Every link you index is stored in your personal vault for instant recall.
-            </motion.p>
+            
+            <h2 className="headline" style={{ fontSize: '3rem', textAlign: 'left', margin: 0 }}>Research History</h2>
+            <p className="subheadline" style={{ textAlign: 'left', margin: '1rem 0 0', maxWidth: '100%' }}>
+              Access your previous intelligence reports instantly.
+            </p>
           </div>
 
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={fetchHistory}
-            className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white hover:bg-white/10 transition-colors"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          <button onClick={fetchHistory} className="btn-secondary" style={{ width: 'fit-content' }}>
+            <RefreshCw className={isLoading ? 'animate-pulse' : ''} style={{ width: '1rem' }} />
             Refresh Library
-          </motion.button>
+          </button>
         </div>
 
         {error && (
-          <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 mb-8">
+          <div className="glass" style={{ padding: '1.5rem', borderRadius: '1rem', color: '#f87171', marginBottom: '2rem' }}>
             {error}
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="history-grid">
           <AnimatePresence mode="popLayout">
             {isLoading && history.length === 0 ? (
-              // Skeleton Loading
               [...Array(3)].map((_, i) => (
-                <div key={i} className="h-48 rounded-2xl bg-white/5 border border-white/10 animate-pulse" />
+                <div key={i} className="history-card glass animate-pulse" style={{ height: '200px' }} />
               ))
             ) : history.length === 0 ? (
-              <div className="col-span-full py-20 text-center rounded-3xl bg-white/5 border border-dashed border-white/10">
-                <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Book className="w-8 h-8 text-gray-600" />
-                </div>
-                <p className="text-gray-500">No research history yet. Start by indexing your first link!</p>
+              <div className="history-empty glass">
+                <Book style={{ width: '2rem', height: '2rem', margin: '0 auto 1rem', opacity: 0.3 }} />
+                <p>No research history yet. Start by indexing your first link!</p>
               </div>
             ) : (
               history.map((item, index) => (
                 <motion.div
                   key={item.url}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  whileInView={{ opacity: 1, scale: 1 }}
-                  viewport={{ once: true }}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  whileHover={{ y: -5 }}
-                  className="group relative p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-blue-500/30 hover:bg-white/[0.07] transition-all"
+                  className="history-card glass"
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-white/5 p-2 flex items-center justify-center group-hover:bg-blue-500/10 transition-colors">
-                      <img 
-                        src={getFavicon(item.url)} 
-                        alt="favicon" 
-                        className="w-full h-full object-contain opacity-80 group-hover:opacity-100"
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                          e.target.nextSibling.style.display = 'flex';
-                        }}
-                      />
-                      <div className="hidden w-full h-full items-center justify-center">
-                        <Book className="w-6 h-6 text-gray-500" />
-                      </div>
+                  <div className="history-card-header">
+                    <div className="history-card-icon">
+                      <img src={getFavicon(item.url)} alt="fav" onError={(e) => (e.target.style.opacity = 0)} />
                     </div>
-                    <div className="flex items-center gap-1 text-[10px] font-medium text-gray-500 uppercase tracking-tighter">
-                      <Clock className="w-3 h-3" />
+                    <div className="history-card-date">
+                      <Clock style={{ width: '0.8rem' }} />
                       {formatDate(item.created_at)}
                     </div>
                   </div>
 
-                  <h3 className="text-lg font-semibold text-white mb-2 line-clamp-1 group-hover:text-blue-400 transition-colors">
-                    {item.title || 'Untitled Research'}
-                  </h3>
-                  <p className="text-xs text-gray-500 mb-6 line-clamp-1 font-mono">
-                    {item.url}
-                  </p>
+                  <h3 className="history-card-title">{item.title || 'Untitled Research'}</h3>
+                  <p className="history-card-url">{item.url}</p>
 
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => onSelectUrl(item.url)}
-                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-500 transition-colors"
-                    >
-                      Return to Research
-                      <ChevronRight className="w-4 h-4" />
+                  <div className="history-card-actions">
+                    <button onClick={() => onSelectUrl(item.url)} className="btn-history-load">
+                      Return <ChevronRight style={{ width: '1rem' }} />
                     </button>
-                    <a
-                      href={item.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:bg-white/10 transition-all"
-                    >
-                      <ExternalLink className="w-4 h-4" />
+                    <a href={item.url} target="_blank" rel="noreferrer" className="btn-history-view">
+                      <ExternalLink style={{ width: '1rem' }} />
                     </a>
                   </div>
                 </motion.div>
