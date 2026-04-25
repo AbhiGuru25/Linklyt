@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Model IDs
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-HF_LLM_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
+HF_LLM_MODEL = "mistralai/Mistral-7B-Instruct-v0.3"
 
 _embeddings: Optional[HuggingFaceEndpointEmbeddings] = None
 _llm: Optional[HuggingFaceEndpoint] = None
