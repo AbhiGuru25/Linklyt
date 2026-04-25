@@ -67,6 +67,7 @@ def get_llm() -> HuggingFaceEndpoint:
             huggingfacehub_api_token=hf_token,
             temperature=0.2,
             max_new_tokens=512,
+            task="conversational"
         )
     return _llm
 
