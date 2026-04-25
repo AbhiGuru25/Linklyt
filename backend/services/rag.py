@@ -14,7 +14,31 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.tools import DuckDuckGoSearchRun
-from langchain.agents import AgentExecutor, create_react_agent
+import importlib
+try:
+    # Option 1: Standard Modern path
+    from langchain.agents import AgentExecutor, create_react_agent
+except ImportError:
+    # Option 2: Search likely locations in newer versions (Self-Healing)
+    AgentExecutor = None
+    create_react_agent = None
+    for sub in ["executor", "agent", "base", "loading"]:
+        try:
+            mod = importlib.import_module(f"langchain.agents.{sub}")
+            if hasattr(mod, "AgentExecutor"):
+                AgentExecutor = mod.AgentExecutor
+                if not create_react_agent and hasattr(mod, "create_react_agent"):
+                    create_react_agent = mod.create_react_agent
+                break
+        except ImportError:
+            continue
+    
+    # Final Fallback check
+    if not AgentExecutor:
+        from langchain.agents.executor import AgentExecutor # Last attempt
+    if not create_react_agent:
+        from langchain.agents import create_react_agent
+
 from langchain import hub
 
 from .db import upsert_documents, similarity_search
