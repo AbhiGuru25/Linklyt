@@ -186,7 +186,7 @@ async def stream_ask(url: str, question: str, use_search: bool = False):
             yield chunk
         return
 
-    # Standard RAG: stream tokens from LLM
+    # Standard RAG: use ainvoke instead of astream to avoid HuggingFace StopIteration bug
     llm = get_llm()
     embed_model = get_embeddings()
     
@@ -195,16 +195,15 @@ async def stream_ask(url: str, question: str, use_search: bool = False):
     context = "\n\n".join([r["content"] for r in results]) if results else "No local data found."
 
     prompt = f"Use ONLY the following context to answer. If answer is not there, say you don't know.\nContext: {context}\nQuestion: {question}\nAnswer:"
-    async for chunk in llm.astream(prompt):
-        # LangChain may yield GenerationChunk objects or plain strings
-        if hasattr(chunk, 'text'):
-            text = chunk.text
-        elif hasattr(chunk, 'content'):
-            text = chunk.content
-        else:
-            text = str(chunk)
-        if text:
-            yield text
+    
+    # ainvoke returns the full string — avoids RuntimeError: coroutine raised StopIteration in _astream
+    response = await llm.ainvoke(prompt)
+    if hasattr(response, 'text'):
+        yield response.text
+    elif hasattr(response, 'content'):
+        yield response.content
+    else:
+        yield str(response)
 
 
 async def ingest(url: str, text: str) -> tuple[int, str]:
