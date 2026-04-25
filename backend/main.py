@@ -139,8 +139,17 @@ async def ask_question(req: AskRequest):
 
     async def event_generator():
         from services.rag import stream_ask
-        async for token in stream_ask(url_str, req.question, req.use_search):
-            yield f"data: {json.dumps({'token': token})}\n\n"
+        got_tokens = False
+        try:
+            async for token in stream_ask(url_str, req.question, req.use_search):
+                if token:
+                    got_tokens = True
+                    yield f"data: {json.dumps({'token': token})}\n\n"
+            if not got_tokens:
+                yield f"data: {json.dumps({'token': 'The AI returned an empty response. Please try again.'})}\n\n"
+        except Exception as e:
+            logger.error(f"Streaming error: {e}")
+            yield f"data: {json.dumps({'token': f'Error: {str(e)}'})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

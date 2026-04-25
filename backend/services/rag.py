@@ -167,13 +167,14 @@ async def stream_search_answer(url: str, question: str):
     }
     
     # Run the graph
-    # For now, we run full nodes. In a more advanced setup, we can stream tokens from the synthesis node.
     final_output = await _research_app.ainvoke(initial_state)
-    
-    # To maintain streaming UI, we split the final answer into chunks (simulated streaming)
-    # or we can use the llm.astream directly in the node if we return a stream object.
-    # For now, let's yield the full answer as one chunk or simulate.
-    yield final_output["answer"]
+    answer = final_output["answer"]
+    # Ensure answer is a plain string (LangGraph may wrap it)
+    if hasattr(answer, 'text'):
+        answer = answer.text
+    elif hasattr(answer, 'content'):
+        answer = answer.content
+    yield str(answer)
 
 
 async def stream_ask(url: str, question: str, use_search: bool = False):
@@ -185,7 +186,7 @@ async def stream_ask(url: str, question: str, use_search: bool = False):
             yield chunk
         return
 
-    # Standard RAG
+    # Standard RAG: stream tokens from LLM
     llm = get_llm()
     embed_model = get_embeddings()
     
@@ -195,7 +196,15 @@ async def stream_ask(url: str, question: str, use_search: bool = False):
 
     prompt = f"Use ONLY the following context to answer. If answer is not there, say you don't know.\nContext: {context}\nQuestion: {question}\nAnswer:"
     async for chunk in llm.astream(prompt):
-        yield chunk
+        # LangChain may yield GenerationChunk objects or plain strings
+        if hasattr(chunk, 'text'):
+            text = chunk.text
+        elif hasattr(chunk, 'content'):
+            text = chunk.content
+        else:
+            text = str(chunk)
+        if text:
+            yield text
 
 
 async def ingest(url: str, text: str) -> tuple[int, str]:
