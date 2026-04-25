@@ -1,5 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// FastAPI can return detail as an array (422 validation errors) or a string
+const parseApiError = (data) => {
+  if (!data) return 'An unknown error occurred';
+  if (Array.isArray(data.detail)) return data.detail.map(e => e.msg).join(', ');
+  if (typeof data.detail === 'string') return data.detail;
+  if (typeof data.message === 'string') return data.message;
+  return JSON.stringify(data);
+};
 
 const Demo = ({ initialUrl, onUrlChange }) => {
   const [question, setQuestion] = useState('');
@@ -11,6 +20,9 @@ const Demo = ({ initialUrl, onUrlChange }) => {
   const [useSearch, setUseSearch] = useState(false);
   const [isAutomating, setIsAutomating] = useState(false);
   const [automationSuccess, setAutomationSuccess] = useState(false);
+
+  // Clear error when URL changes (e.g. returning from History)
+  useEffect(() => { setError(''); }, [initialUrl]);
 
   const handleAutomate = async () => {
     const webhookUrl = localStorage.getItem('n8n_webhook_url');
@@ -37,7 +49,7 @@ const Demo = ({ initialUrl, onUrlChange }) => {
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || 'Automation failed');
+      if (!response.ok) throw new Error(parseApiError(data));
       
       setAutomationSuccess(true);
       setTimeout(() => setAutomationSuccess(false), 3000);
@@ -65,7 +77,7 @@ const Demo = ({ initialUrl, onUrlChange }) => {
         body: JSON.stringify({ url }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || 'Failed to analyze URL');
+      if (!response.ok) throw new Error(parseApiError(data));
       
       setSummary(data.summary);
       setAnswer(data.message);
@@ -93,7 +105,7 @@ const Demo = ({ initialUrl, onUrlChange }) => {
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.detail || 'Failed to get answer');
+        throw new Error(parseApiError(data));
       }
 
       const reader = response.body.getReader();
