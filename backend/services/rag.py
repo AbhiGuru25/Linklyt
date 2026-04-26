@@ -167,14 +167,24 @@ async def stream_search_answer(url: str, question: str):
     }
     
     # Run the graph
-    final_output = await _research_app.ainvoke(initial_state)
-    answer = final_output["answer"]
-    # Ensure answer is a plain string (LangGraph may wrap it)
-    if hasattr(answer, 'text'):
-        answer = answer.text
-    elif hasattr(answer, 'content'):
-        answer = answer.content
-    yield str(answer)
+    try:
+        logger.info(f"🚀 Graph: Starting research for {url}")
+        final_output = await _research_app.ainvoke(initial_state)
+        logger.info("✅ Graph: Success")
+        answer = final_output.get("answer", "No answer generated.")
+        
+        # Ensure answer is a plain string
+        if hasattr(answer, 'text'):
+            answer = answer.text
+        elif hasattr(answer, 'content'):
+            answer = answer.content
+        yield str(answer)
+    except StopIteration:
+        logger.error("🔥 Graph: Caught StopIteration! Converting to string.")
+        yield "Internal Error: Research model stopped prematurely."
+    except Exception as e:
+        logger.error(f"🔥 Graph: Error: {str(e)}", exc_info=True)
+        yield f"Error in research workflow: {str(e)}"
 
 
 async def stream_ask(url: str, question: str, use_search: bool = False):
@@ -197,13 +207,28 @@ async def stream_ask(url: str, question: str, use_search: bool = False):
     prompt = f"Use ONLY the following context to answer. If answer is not there, say you don't know.\nContext: {context}\nQuestion: {question}\nAnswer:"
     
     # ainvoke returns the full string — avoids RuntimeError: coroutine raised StopIteration in _astream
-    response = await llm.ainvoke(prompt)
-    if hasattr(response, 'text'):
-        yield response.text
-    elif hasattr(response, 'content'):
-        yield response.content
-    else:
-        yield str(response)
+    try:
+        logger.info(f"🤖 LLM: Invoking {HF_LLM_MODEL}...")
+        response = await llm.ainvoke(prompt)
+        logger.info("✅ LLM: Success")
+        
+        if hasattr(response, 'text'):
+            text = response.text
+        elif hasattr(response, 'content'):
+            text = response.content
+        else:
+            text = str(response)
+        
+        if not text:
+            yield "The AI returned an empty response."
+        else:
+            yield text
+    except StopIteration:
+        logger.error("🔥 LLM: Caught StopIteration from ainvoke!")
+        yield "The AI model encountered a technical error. Please try again."
+    except Exception as e:
+        logger.error(f"🔥 LLM: Error during ainvoke: {str(e)}", exc_info=True)
+        yield f"AI Error: {str(e)}"
 
 
 async def ingest(url: str, text: str) -> tuple[int, str]:
