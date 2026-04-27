@@ -132,9 +132,9 @@ async def synthesis_node(state: ResearchState):
     Synthesize a comprehensive, professional answer using both the page context and web info.
     ANSWER:"""
     
-    # We yield the full answer here as a string for the state
-    answer = await llm.ainvoke(prompt)
-    return {"answer": answer}
+    # Use asyncio.to_thread for stability - avoids broken async paths in HF library
+    answer = await asyncio.to_thread(llm.invoke, prompt)
+    return {"answer": str(answer)}
 
 # --- Build the Graph ---
 def create_research_graph():
@@ -191,44 +191,41 @@ async def stream_ask(url: str, question: str, use_search: bool = False):
     """
     Search relevant chunks and generate a streaming answer.
     """
-    if use_search:
-        async for chunk in stream_search_answer(url, question):
-            yield chunk
-        return
-
-    # Standard RAG: use ainvoke instead of astream to avoid HuggingFace StopIteration bug
-    llm = get_llm()
-    embed_model = get_embeddings()
-    
-    embeddings = await embed_with_retry(embed_model, [question])
-    results = await similarity_search(embeddings[0], url, k=4)
-    context = "\n\n".join([r["content"] for r in results]) if results else "No local data found."
-
-    prompt = f"Use ONLY the following context to answer. If answer is not there, say you don't know.\nContext: {context}\nQuestion: {question}\nAnswer:"
-    
-    # ainvoke returns the full string — avoids RuntimeError: coroutine raised StopIteration in _astream
     try:
-        logger.info(f"🤖 LLM: Invoking {HF_LLM_MODEL}...")
-        response = await llm.ainvoke(prompt)
+        if use_search:
+            async for chunk in stream_search_answer(url, question):
+                yield chunk
+            return
+
+        # Standard RAG: use sync invoke in a thread for absolute stability
+        llm = get_llm()
+        embed_model = get_embeddings()
+        
+        embeddings = await embed_with_retry(embed_model, [question])
+        results = await similarity_search(embeddings[0], url, k=4)
+        context = "\n\n".join([r["content"] for r in results]) if results else "No local data found."
+
+        prompt = f"Use ONLY the following context to answer. If answer is not there, say you don't know.\nContext: {context}\nQuestion: {question}\nAnswer:"
+        
+        logger.info(f"🤖 LLM (Stable Mode): Invoking {HF_LLM_MODEL}...")
+        # Use to_thread to keep server responsive but use stable sync path
+        response = await asyncio.to_thread(llm.invoke, prompt)
         logger.info("✅ LLM: Success")
         
+        # Ensure result is extracted correctly
+        text = ""
         if hasattr(response, 'text'):
             text = response.text
         elif hasattr(response, 'content'):
             text = response.content
         else:
             text = str(response)
-        
-        if not text:
-            yield "The AI returned an empty response."
-        else:
-            yield text
-    except StopIteration:
-        logger.error("🔥 LLM: Caught StopIteration from ainvoke!")
-        yield "The AI model encountered a technical error. Please try again."
+            
+        yield text if text.strip() else "The AI returned an empty response."
+
     except Exception as e:
-        logger.error(f"🔥 LLM: Error during ainvoke: {str(e)}", exc_info=True)
-        yield f"AI Error: {str(e)}"
+        logger.error(f"🔥 Critical RAG Error: {str(e)}", exc_info=True)
+        yield f"System Stability Error: {str(e)}. Please try again."
 
 
 async def ingest(url: str, text: str) -> tuple[int, str]:
