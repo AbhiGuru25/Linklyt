@@ -64,11 +64,11 @@ def get_llm() -> ChatOpenAI:
     global _llm
     if _llm is None:
         hf_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
-        # Use HuggingFace's OpenAI-compatible endpoint for maximum stability
+        # Use HuggingFace's model-specific OpenAI-compatible endpoint
         _llm = ChatOpenAI(
-            base_url="https://api-inference.huggingface.co/v1/",
+            base_url=f"https://api-inference.huggingface.co/models/{HF_LLM_MODEL}/v1/",
             api_key=hf_token,
-            model=HF_LLM_MODEL,
+            model="tgi", # The model name in the URL takes precedence
             temperature=0.2,
             max_tokens=512,
         )
