@@ -12,6 +12,7 @@ langgraph>=0.1.0
 
 # HuggingFace (Cloud AI Mode - No Local Weights)
 huggingface-hub>=0.26.0
+transformers>=4.44.0
 
 # Supabase (Direct REST API Mode)
 supabase==2.7.4
