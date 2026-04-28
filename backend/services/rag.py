@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Model IDs
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-HF_LLM_MODEL = "microsoft/Phi-3-mini-4k-instruct"
+HF_LLM_MODEL = "mistralai/Mistral-7B-Instruct-v0.3"
 
 _embeddings: Optional[HuggingFaceEndpointEmbeddings] = None
 _llm: Optional[HuggingFaceEndpoint] = None
@@ -67,6 +67,7 @@ def get_llm() -> HuggingFaceEndpoint:
             huggingfacehub_api_token=hf_token,
             temperature=0.2,
             max_new_tokens=512,
+            task="text-generation", # Explicitly set task to avoid provider conflicts
         )
     return _llm
 
