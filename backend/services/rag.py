@@ -7,11 +7,12 @@ import os
 import logging
 import asyncio
 from typing import Optional
-
 from dotenv import load_dotenv
+import requests
+
+# Load environment variables
+load_dotenv()
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
@@ -28,7 +29,33 @@ EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 HF_LLM_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
 
 _embeddings: Optional[HuggingFaceEndpointEmbeddings] = None
-_llm: Optional[ChatOpenAI] = None
+
+def call_hf_api(prompt: str) -> str:
+    """Directly calls the HuggingFace Inference API for maximum stability."""
+    hf_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+    API_URL = f"https://api-inference.huggingface.co/models/{HF_LLM_MODEL}"
+    headers = {"Authorization": f"Bearer {hf_token}"}
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": 512,
+            "temperature": 0.2,
+            "return_full_text": False
+        },
+        "options": {"wait_for_model": True}
+    }
+    
+    logger.info(f"🚀 Direct HF API: Calling {HF_LLM_MODEL}...")
+    response = requests.post(API_URL, headers=headers, json=payload, timeout=60)
+    
+    if response.status_code != 200:
+        logger.error(f"❌ HF API Error {response.status_code}: {response.text}")
+        raise Exception(f"HuggingFace API Error: {response.text}")
+        
+    result = response.json()
+    if isinstance(result, list) and len(result) > 0:
+        return result[0].get("generated_text", "No text generated.")
+    return str(result)
 
 
 async def embed_with_retry(embed_model: HuggingFaceEndpointEmbeddings, texts: list[str], max_retries: int = 5) -> list[list[float]]:
@@ -60,19 +87,7 @@ def get_embeddings() -> HuggingFaceEndpointEmbeddings:
     return _embeddings
 
 
-def get_llm() -> ChatOpenAI:
-    global _llm
-    if _llm is None:
-        hf_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
-        # Use HuggingFace's model-specific OpenAI-compatible endpoint
-        _llm = ChatOpenAI(
-            base_url=f"https://api-inference.huggingface.co/models/{HF_LLM_MODEL}/v1/",
-            api_key=hf_token,
-            model="tgi", # The model name in the URL takes precedence
-            temperature=0.2,
-            max_tokens=512,
-        )
-    return _llm
+# Removed get_llm as we are now using direct API calls via call_hf_api
 
 
 def chunk_text(text: str, url: str) -> list[Document]:
@@ -87,13 +102,9 @@ def chunk_text(text: str, url: str) -> list[Document]:
 
 async def summarize_text(text: str) -> str:
     """Generate a brief summary of the text."""
-    llm = get_llm()
-    messages = [
-        SystemMessage(content="Summarize the following text in exactly three bullet points. Focus on the core value proposition."),
-        HumanMessage(content=text[:4000])
-    ]
-    response = await asyncio.to_thread(llm.invoke, messages)
-    return response.content.strip()
+    prompt = f"Summarize the following text in exactly three bullet points. Focus on the core value proposition. \n\nText: {text[:4000]} \n\nSummary:"
+    summary = await asyncio.to_thread(call_hf_api, prompt)
+    return summary.strip()
 
 
 from typing import TypedDict, List
@@ -130,13 +141,16 @@ async def web_search_node(state: ResearchState):
 async def synthesis_node(state: ResearchState):
     """Combine local + web info into a final answer."""
     logger.info("✍️ LangGraph: Synthesizing final answer...")
-    # Use asyncio.to_thread for stability
-    messages = [
-        SystemMessage(content="You are a Linklyt Research Assistant. Synthesize a professional answer using both the page context and web info."),
-        HumanMessage(content=f"PAGE CONTEXT: {state['context']}\nLIVE WEB SEARCH: {state['web_data']}\nUSER QUESTION: {state['question']}")
-    ]
-    response = await asyncio.to_thread(llm.invoke, messages)
-    return {"answer": str(response.content)}
+    prompt = f"""You are a Linklyt Research Assistant.
+    PAGE CONTEXT: {state['context']}
+    LIVE WEB SEARCH: {state['web_data']}
+    USER QUESTION: {state['question']}
+    
+    Synthesize a comprehensive, professional answer using both the page context and web info.
+    ANSWER:"""
+    
+    answer = await asyncio.to_thread(call_hf_api, prompt)
+    return {"answer": str(answer)}
 
 # --- Build the Graph ---
 def create_research_graph():
@@ -199,24 +213,19 @@ async def stream_ask(url: str, question: str, use_search: bool = False):
                 yield chunk
             return
 
-        # Standard RAG: use Chat messages for conversational task support
-        llm = get_llm()
+        # Standard RAG: use direct API call
         embed_model = get_embeddings()
         
         embeddings = await embed_with_retry(embed_model, [question])
         results = await similarity_search(embeddings[0], url, k=4)
         context = "\n\n".join([r["content"] for r in results]) if results else "No local data found."
 
-        messages = [
-            SystemMessage(content="Use ONLY the following context to answer. If answer is not there, say you don't know."),
-            HumanMessage(content=f"Context: {context}\nQuestion: {question}")
-        ]
+        prompt = f"Use ONLY the following context to answer. If answer is not there, say you don't know.\nContext: {context}\nQuestion: {question}\nAnswer:"
         
-        logger.info(f"🤖 LLM (Stable Mode): Invoking {HF_LLM_MODEL}...")
-        response = await asyncio.to_thread(llm.invoke, messages)
+        response = await asyncio.to_thread(call_hf_api, prompt)
         logger.info("✅ LLM: Success")
         
-        yield str(response.content) if str(response.content).strip() else "The AI returned an empty response."
+        yield str(response) if str(response).strip() else "The AI returned an empty response."
 
     except Exception as e:
         logger.error(f"🔥 Critical RAG Error: {str(e)}", exc_info=True)
