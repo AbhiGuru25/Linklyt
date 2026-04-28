@@ -11,6 +11,7 @@ from typing import Optional
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEndpoint, HuggingFaceEndpointEmbeddings, ChatHuggingFace
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.tools import DuckDuckGoSearchRun
