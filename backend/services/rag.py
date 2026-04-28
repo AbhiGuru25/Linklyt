@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Model IDs
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-HF_LLM_MODEL = "microsoft/Phi-3-mini-4k-instruct"
+HF_LLM_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
 
 _embeddings: Optional[HuggingFaceEndpointEmbeddings] = None
 _llm: Optional[HuggingFaceEndpoint] = None
