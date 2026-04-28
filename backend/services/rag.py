@@ -8,9 +8,10 @@ import logging
 import asyncio
 from typing import Optional
 
-from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_huggingface import HuggingFaceEndpoint, HuggingFaceEndpointEmbeddings
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_community.tools import DuckDuckGoSearchRun
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Model IDs
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-HF_LLM_MODEL = "HuggingFaceH4/zephyr-7b-beta"
+HF_LLM_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
 
 _embeddings: Optional[HuggingFaceEndpointEmbeddings] = None
 _llm: Optional[HuggingFaceEndpoint] = None
@@ -58,16 +59,17 @@ def get_embeddings() -> HuggingFaceEndpointEmbeddings:
     return _embeddings
 
 
-def get_llm() -> HuggingFaceEndpoint:
+def get_llm() -> ChatOpenAI:
     global _llm
     if _llm is None:
         hf_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
-        _llm = HuggingFaceEndpoint(
-            repo_id=HF_LLM_MODEL,
-            huggingfacehub_api_token=hf_token,
+        # Use HuggingFace's OpenAI-compatible endpoint for maximum stability
+        _llm = ChatOpenAI(
+            base_url="https://api-inference.huggingface.co/v1/",
+            api_key=hf_token,
+            model=HF_LLM_MODEL,
             temperature=0.2,
-            max_new_tokens=512,
-            # Let HF decide the task automatically to avoid provider conflicts
+            max_tokens=512,
         )
     return _llm
 
@@ -85,9 +87,12 @@ def chunk_text(text: str, url: str) -> list[Document]:
 async def summarize_text(text: str) -> str:
     """Generate a brief summary of the text."""
     llm = get_llm()
-    prompt = f"Summarize the following text in exactly three bullet points. Focus on the core value proposition and main topics. \n\nText: {text[:4000]} \n\nSummary:"
-    summary = await asyncio.to_thread(llm.invoke, prompt)
-    return summary.strip()
+    messages = [
+        SystemMessage(content="Summarize the following text in exactly three bullet points. Focus on the core value proposition."),
+        HumanMessage(content=text[:4000])
+    ]
+    response = await asyncio.to_thread(llm.invoke, messages)
+    return response.content.strip()
 
 
 from typing import TypedDict, List
@@ -124,18 +129,13 @@ async def web_search_node(state: ResearchState):
 async def synthesis_node(state: ResearchState):
     """Combine local + web info into a final answer."""
     logger.info("✍️ LangGraph: Synthesizing final answer...")
-    llm = get_llm()
-    prompt = f"""You are a Linklyt Research Assistant.
-    PAGE CONTEXT: {state['context']}
-    LIVE WEB SEARCH: {state['web_data']}
-    USER QUESTION: {state['question']}
-    
-    Synthesize a comprehensive, professional answer using both the page context and web info.
-    ANSWER:"""
-    
     # Use asyncio.to_thread for stability
-    answer = await asyncio.to_thread(llm.invoke, prompt)
-    return {"answer": str(answer)}
+    messages = [
+        SystemMessage(content="You are a Linklyt Research Assistant. Synthesize a professional answer using both the page context and web info."),
+        HumanMessage(content=f"PAGE CONTEXT: {state['context']}\nLIVE WEB SEARCH: {state['web_data']}\nUSER QUESTION: {state['question']}")
+    ]
+    response = await asyncio.to_thread(llm.invoke, messages)
+    return {"answer": str(response.content)}
 
 # --- Build the Graph ---
 def create_research_graph():
@@ -198,7 +198,7 @@ async def stream_ask(url: str, question: str, use_search: bool = False):
                 yield chunk
             return
 
-        # Standard RAG: use stable text-generation mode
+        # Standard RAG: use Chat messages for conversational task support
         llm = get_llm()
         embed_model = get_embeddings()
         
@@ -206,13 +206,16 @@ async def stream_ask(url: str, question: str, use_search: bool = False):
         results = await similarity_search(embeddings[0], url, k=4)
         context = "\n\n".join([r["content"] for r in results]) if results else "No local data found."
 
-        prompt = f"Use ONLY the following context to answer. If answer is not there, say you don't know.\nContext: {context}\nQuestion: {question}\nAnswer:"
+        messages = [
+            SystemMessage(content="Use ONLY the following context to answer. If answer is not there, say you don't know."),
+            HumanMessage(content=f"Context: {context}\nQuestion: {question}")
+        ]
         
         logger.info(f"🤖 LLM (Stable Mode): Invoking {HF_LLM_MODEL}...")
-        response = await asyncio.to_thread(llm.invoke, prompt)
+        response = await asyncio.to_thread(llm.invoke, messages)
         logger.info("✅ LLM: Success")
         
-        yield str(response) if str(response).strip() else "The AI returned an empty response."
+        yield str(response.content) if str(response.content).strip() else "The AI returned an empty response."
 
     except Exception as e:
         logger.error(f"🔥 Critical RAG Error: {str(e)}", exc_info=True)
