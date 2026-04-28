@@ -1,74 +1,84 @@
 """
-RAG Service — fully async LangChain pipeline.
-Uses HuggingFace embeddings (local) + Supabase pgvector + Mistral-7B LLM.
+RAG Service — fully async pipeline.
+Uses HuggingFace embeddings + Supabase pgvector + Groq (Llama-3.1-8B) LLM.
+Groq is free, blazing fast, and 100% stable.
 """
 
 import os
 import logging
 import asyncio
 from typing import Optional
-from dotenv import load_dotenv
-import requests
 
-# Load environment variables
+from dotenv import load_dotenv
+from groq import Groq
+
 load_dotenv()
-from langchain_core.prompts import ChatPromptTemplate
+
 from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_community.tools import DuckDuckGoSearchRun
 
-
 from .db import upsert_documents, similarity_search
 
-load_dotenv()
 logger = logging.getLogger(__name__)
 
-# Model IDs
+# --- Model Configuration ---
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-HF_LLM_MODEL = "microsoft/Phi-3.5-mini-instruct"
+GROQ_MODEL = "llama-3.1-8b-instant"  # Free, fast, smart
 
 _embeddings: Optional[HuggingFaceEndpointEmbeddings] = None
+_groq_client: Optional[Groq] = None
 
-def call_hf_api(prompt: str) -> str:
-    """Directly calls the HuggingFace Inference API for maximum stability."""
-    hf_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
-    API_URL = f"https://api-inference.huggingface.co/models/{HF_LLM_MODEL}"
-    headers = {"Authorization": f"Bearer {hf_token}"}
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "max_new_tokens": 512,
-            "temperature": 0.2,
-            "return_full_text": False
-        },
-        "options": {"wait_for_model": True}
-    }
+
+def get_groq_client() -> Groq:
+    """Get or create the Groq client."""
+    global _groq_client
+    if _groq_client is None:
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError("GROQ_API_KEY environment variable is not set.")
+        _groq_client = Groq(api_key=api_key)
+    return _groq_client
+
+
+def call_groq(system_prompt: str, user_prompt: str) -> str:
+    """
+    Calls the Groq API for LLM inference.
+    Groq is FREE, has no routing issues, and is extremely fast.
+    """
+    client = get_groq_client()
+    logger.info(f"🚀 Groq API: Calling {GROQ_MODEL}...")
     
-    logger.info(f"🚀 Direct HF API: Calling {HF_LLM_MODEL}...")
-    response = requests.post(API_URL, headers=headers, json=payload, timeout=60)
+    completion = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.2,
+        max_tokens=512,
+    )
     
-    if response.status_code != 200:
-        logger.error(f"❌ HF API Error {response.status_code}: {response.text}")
-        raise Exception(f"HuggingFace API Error: {response.text}")
-        
-    result = response.json()
-    if isinstance(result, list) and len(result) > 0:
-        return result[0].get("generated_text", "No text generated.")
-    return str(result)
+    result = completion.choices[0].message.content
+    logger.info("✅ Groq API: Success")
+    return result.strip()
 
 
-async def embed_with_retry(embed_model: HuggingFaceEndpointEmbeddings, texts: list[str], max_retries: int = 5) -> list[list[float]]:
+async def embed_with_retry(
+    embed_model: HuggingFaceEndpointEmbeddings,
+    texts: list[str],
+    max_retries: int = 5
+) -> list[list[float]]:
     """Handles HuggingFace API cold starts by retrying with backoff."""
     for attempt in range(max_retries):
         try:
-            # Note: embed_documents is synchronous in the current LangChain implementation
             return embed_model.embed_documents(texts)
         except Exception as e:
             err_msg = str(e).lower()
             if ("loading" in err_msg or "503" in err_msg) and attempt < max_retries - 1:
                 wait_time = (attempt + 1) * 10
-                logger.info(f"HuggingFace model is loading. Retrying in {wait_time}s... (Attempt {attempt+1}/{max_retries})")
+                logger.info(f"HuggingFace embeddings loading. Retrying in {wait_time}s... (Attempt {attempt+1}/{max_retries})")
                 await asyncio.sleep(wait_time)
             else:
                 logger.error(f"Embedding failed after {attempt+1} attempts: {str(e)}")
@@ -87,9 +97,6 @@ def get_embeddings() -> HuggingFaceEndpointEmbeddings:
     return _embeddings
 
 
-# Removed get_llm as we are now using direct API calls via call_hf_api
-
-
 def chunk_text(text: str, url: str) -> list[Document]:
     """Split text into overlapping chunks."""
     splitter = RecursiveCharacterTextSplitter(
@@ -101,22 +108,25 @@ def chunk_text(text: str, url: str) -> list[Document]:
 
 
 async def summarize_text(text: str) -> str:
-    """Generate a brief summary of the text."""
-    prompt = f"Summarize the following text in exactly three bullet points. Focus on the core value proposition. \n\nText: {text[:4000]} \n\nSummary:"
-    summary = await asyncio.to_thread(call_hf_api, prompt)
-    return summary.strip()
+    """Generate a brief summary of the text using Groq."""
+    system = "You are a concise summarizer. Summarize text in exactly three bullet points."
+    user = f"Summarize this text:\n\n{text[:4000]}"
+    result = await asyncio.to_thread(call_groq, system, user)
+    return result
 
 
-from typing import TypedDict, List
+# --- LangGraph Pipeline ---
+from typing import TypedDict
 from langgraph.graph import StateGraph, END
 
-# --- LangGraph State Definition ---
+
 class ResearchState(TypedDict):
     url: str
     question: str
     context: str
     web_data: str
     answer: str
+
 
 async def local_search_node(state: ResearchState):
     """Retrieve indexed chunks from Supabase."""
@@ -126,6 +136,7 @@ async def local_search_node(state: ResearchState):
     results = await similarity_search(embeddings[0], state["url"], k=4)
     context = "\n\n".join([r["content"] for r in results]) if results else "No local info."
     return {"context": context}
+
 
 async def web_search_node(state: ResearchState):
     """Retrieve live info from DuckDuckGo."""
@@ -138,42 +149,39 @@ async def web_search_node(state: ResearchState):
         results = "Web search unavailable."
     return {"web_data": results}
 
-async def synthesis_node(state: ResearchState):
-    """Combine local + web info into a final answer."""
-    logger.info("✍️ LangGraph: Synthesizing final answer...")
-    prompt = f"""You are a Linklyt Research Assistant.
-    PAGE CONTEXT: {state['context']}
-    LIVE WEB SEARCH: {state['web_data']}
-    USER QUESTION: {state['question']}
-    
-    Synthesize a comprehensive, professional answer using both the page context and web info.
-    ANSWER:"""
-    
-    answer = await asyncio.to_thread(call_hf_api, prompt)
-    return {"answer": str(answer)}
 
-# --- Build the Graph ---
+async def synthesis_node(state: ResearchState):
+    """Combine local + web info into a final answer using Groq."""
+    logger.info("✍️ LangGraph: Synthesizing final answer...")
+    system = "You are a Linklyt Research Assistant. Synthesize a professional, comprehensive answer using the provided context and web search results."
+    user = (
+        f"PAGE CONTEXT:\n{state['context']}\n\n"
+        f"LIVE WEB SEARCH:\n{state['web_data']}\n\n"
+        f"USER QUESTION: {state['question']}"
+    )
+    answer = await asyncio.to_thread(call_groq, system, user)
+    return {"answer": answer}
+
+
 def create_research_graph():
     workflow = StateGraph(ResearchState)
     workflow.add_node("local_search", local_search_node)
     workflow.add_node("web_search", web_search_node)
     workflow.add_node("synthesis", synthesis_node)
-    
+
     workflow.set_entry_point("local_search")
     workflow.add_edge("local_search", "web_search")
     workflow.add_edge("web_search", "synthesis")
     workflow.add_edge("synthesis", END)
-    
+
     return workflow.compile()
+
 
 _research_app = create_research_graph()
 
 
 async def stream_search_answer(url: str, question: str):
-    """
-    Execute the LangGraph research workflow.
-    Since HuggingFaceEndpoint.astream works on strings, we yield tokens!
-    """
+    """Execute the LangGraph research workflow."""
     initial_state = {
         "url": url,
         "question": question,
@@ -181,31 +189,21 @@ async def stream_search_answer(url: str, question: str):
         "web_data": "",
         "answer": ""
     }
-    
-    # Run the graph
+
     try:
         logger.info(f"🚀 Graph: Starting research for {url}")
         final_output = await _research_app.ainvoke(initial_state)
         logger.info("✅ Graph: Success")
         answer = final_output.get("answer", "No answer generated.")
-        
-        # Ensure answer is a plain string
-        if hasattr(answer, 'text'):
-            answer = answer.text
-        elif hasattr(answer, 'content'):
-            answer = answer.content
         yield str(answer)
-    except StopIteration:
-        logger.error("🔥 Graph: Caught StopIteration! Converting to string.")
-        yield "Internal Error: Research model stopped prematurely."
     except Exception as e:
-        logger.error(f"🔥 Graph: Error: {str(e)}", exc_info=True)
+        logger.error(f"🔥 Graph Error: {str(e)}", exc_info=True)
         yield f"Error in research workflow: {str(e)}"
 
 
 async def stream_ask(url: str, question: str, use_search: bool = False):
     """
-    Search relevant chunks and generate a streaming answer.
+    Search relevant chunks and generate an answer using Groq.
     """
     try:
         if use_search:
@@ -213,19 +211,21 @@ async def stream_ask(url: str, question: str, use_search: bool = False):
                 yield chunk
             return
 
-        # Standard RAG: use direct API call
+        # Standard RAG: embed question → similarity search → Groq answer
         embed_model = get_embeddings()
-        
+
         embeddings = await embed_with_retry(embed_model, [question])
         results = await similarity_search(embeddings[0], url, k=4)
         context = "\n\n".join([r["content"] for r in results]) if results else "No local data found."
 
-        prompt = f"Use ONLY the following context to answer. If answer is not there, say you don't know.\nContext: {context}\nQuestion: {question}\nAnswer:"
-        
-        response = await asyncio.to_thread(call_hf_api, prompt)
-        logger.info("✅ LLM: Success")
-        
-        yield str(response) if str(response).strip() else "The AI returned an empty response."
+        system = "You are a helpful assistant. Use ONLY the provided context to answer. If the answer is not in the context, say 'I don't have enough information about that from this page.'"
+        user = f"Context:\n{context}\n\nQuestion: {question}"
+
+        logger.info(f"🤖 Groq RAG: Invoking {GROQ_MODEL}...")
+        response = await asyncio.to_thread(call_groq, system, user)
+        logger.info("✅ Groq RAG: Success")
+
+        yield response if response.strip() else "The AI returned an empty response."
 
     except Exception as e:
         logger.error(f"🔥 Critical RAG Error: {str(e)}", exc_info=True)
@@ -242,14 +242,14 @@ async def ingest(url: str, text: str) -> tuple[int, str]:
 
     embed_model = get_embeddings()
     texts = [d.page_content for d in docs]
-    
-    # --- Batching Logic: Avoid Cloud API payload limits ---
+
+    # Batch embeds to avoid payload limits
     batch_size = 20
     all_embeddings = []
-    
+
     for i in range(0, len(texts), batch_size):
-        batch_texts = texts[i : i + batch_size]
-        logger.info(f"Embedding batch {i//batch_size + 1} (Size: {len(batch_texts)})...")
+        batch_texts = texts[i: i + batch_size]
+        logger.info(f"Embedding batch {i // batch_size + 1} (Size: {len(batch_texts)})...")
         batch_embeddings = await embed_with_retry(embed_model, batch_texts)
         all_embeddings.extend(batch_embeddings)
 
@@ -263,8 +263,6 @@ async def ingest(url: str, text: str) -> tuple[int, str]:
     ]
 
     await upsert_documents(records)
-    
-    # Generate summary after successful ingestion
+
     summary = await summarize_text(text)
-    
     return len(docs), summary

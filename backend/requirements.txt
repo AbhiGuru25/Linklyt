@@ -7,17 +7,17 @@ python-dotenv==1.0.1
 langchain>=0.3.0
 langchain-community>=0.3.0
 langchain-huggingface>=0.1.2
-langchain-openai>=0.2.0
 langchain-core>=0.3.0
 langgraph>=0.1.0
 
-# HuggingFace (Cloud AI Mode - No Local Weights)
+# Groq - Free, Fast, Stable LLM API (replaces HuggingFace LLM)
+groq>=0.11.0
+
+# HuggingFace (Embeddings only - still free and stable)
 huggingface-hub>=0.26.0
-transformers>=4.44.0
 
 # Supabase (Direct REST API Mode)
 supabase==2.7.4
-# vecs removed — using direct RPC calls for speed
 
 # Scraping
 trafilatura>=1.12.0
