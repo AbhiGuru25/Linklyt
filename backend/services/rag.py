@@ -28,7 +28,7 @@ EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 HF_LLM_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
 
 _embeddings: Optional[HuggingFaceEndpointEmbeddings] = None
-_llm: Optional[HuggingFaceEndpoint] = None
+_llm: Optional[ChatOpenAI] = None
 
 
 async def embed_with_retry(embed_model: HuggingFaceEndpointEmbeddings, texts: list[str], max_retries: int = 5) -> list[list[float]]:
