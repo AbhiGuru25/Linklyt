@@ -84,6 +84,7 @@ class AnalyzeResponse(BaseModel):
     chunks_indexed: int
     cached: bool
     summary: Optional[str] = None
+    nlp_data: Optional[dict] = None
     message: str
 
 
@@ -116,7 +117,7 @@ async def analyze(req: AnalyzeRequest):
     if not text:
         raise HTTPException(status_code=422, detail="Could not extract text.")
 
-    chunks, summary = await ingest(url_str, text)
+    chunks, summary, nlp_data = await ingest(url_str, text)
     # Truncate title for DB stability
     safe_title = (title or url_str)[:200]
     await cache_url(url_str, safe_title)
@@ -126,6 +127,7 @@ async def analyze(req: AnalyzeRequest):
         chunks_indexed=chunks,
         cached=False,
         summary=summary,
+        nlp_data=nlp_data,
         message=f"Success! Indexed {chunks} chunks and generated a summary.",
     )
 

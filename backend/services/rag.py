@@ -107,9 +107,30 @@ def chunk_text(text: str, url: str) -> list[Document]:
     return [Document(page_content=c, metadata={"source": url}) for c in chunks]
 
 
+async def extract_nlp_insights(text: str) -> dict:
+    """
+    Advanced NLP Nerve Center:
+    Extracts Sentiment, Entities, and Keywords in one shot using Groq.
+    """
+    system = "You are an NLP Specialist. Analyze the provided text and return a JSON object with: 'sentiment' (one word), 'entities' (list of people/orgs), and 'keywords' (top 5 topics)."
+    user = f"Analyze this text and return ONLY JSON:\n\n{text[:3000]}"
+    
+    try:
+        result = await asyncio.to_thread(call_groq, system, user)
+        # Attempt to parse JSON from the LLM response
+        import json
+        import re
+        # Clean up common LLM markdown formatting if present
+        cleaned = re.sub(r'```json\n|\n```', '', result)
+        return json.loads(cleaned)
+    except Exception as e:
+        logger.error(f"NLP Extraction failed: {e}")
+        return {"sentiment": "Neutral", "entities": [], "keywords": []}
+
+
 async def summarize_text(text: str) -> str:
     """Generate a brief summary of the text using Groq."""
-    system = "You are a concise summarizer. Summarize text in exactly three bullet points."
+    system = "You are a concise summarizer. Summarize text in exactly three bullet points. Use professional language."
     user = f"Summarize this text:\n\n{text[:4000]}"
     result = await asyncio.to_thread(call_groq, system, user)
     return result
@@ -263,6 +284,9 @@ async def ingest(url: str, text: str) -> tuple[int, str]:
     ]
 
     await upsert_documents(records)
-
+    
+    # Generate summary and NLP insights
     summary = await summarize_text(text)
-    return len(docs), summary
+    nlp_data = await extract_nlp_insights(text)
+    
+    return len(docs), summary, nlp_data
