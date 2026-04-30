@@ -16,6 +16,7 @@ const Demo = ({ initialUrl, onUrlChange }) => {
   const [isAnswering, setIsAnswering] = useState(false);
   const [answer, setAnswer] = useState('');
   const [summary, setSummary] = useState('');
+  const [nlpData, setNlpData] = useState(null);
   const [error, setError] = useState('');
   const [useSearch, setUseSearch] = useState(false);
   const [isAutomating, setIsAutomating] = useState(false);
@@ -67,6 +68,7 @@ const Demo = ({ initialUrl, onUrlChange }) => {
     if (!url) return;
     setIsAnalyzing(true);
     setError('');
+    setNlpData(null);
     try {
       let api_base = import.meta.env.VITE_API_URL || 'https://linklyt-backend.onrender.com';
       api_base = api_base.replace(/\/$/, "");
@@ -80,6 +82,7 @@ const Demo = ({ initialUrl, onUrlChange }) => {
       if (!response.ok) throw new Error(parseApiError(data));
       
       setSummary(data.summary);
+      setNlpData(data.nlp_data);
       setAnswer(data.message);
     } catch (err) {
       setError(String(err.message || err));
@@ -199,6 +202,37 @@ const Demo = ({ initialUrl, onUrlChange }) => {
               {isAnswering ? 'Analysing...' : 'Ask'}
             </button>
           </div>
+
+          {nlpData && (
+            <motion.div 
+              initial={{ opacity: 0, y: 5 }} 
+              animate={{ opacity: 1, y: 0 }}
+              style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}
+            >
+              <span style={{ 
+                padding: '0.2rem 0.6rem', 
+                borderRadius: '2rem', 
+                fontSize: '0.65rem', 
+                fontWeight: 700, 
+                textTransform: 'uppercase',
+                background: 'rgba(6, 182, 212, 0.2)',
+                border: '1px solid #06b6d4',
+                color: '#06b6d4'
+              }}>
+                {nlpData.sentiment || 'Neutral'}
+              </span>
+              {nlpData.entities?.map((ent, i) => (
+                <span key={i} style={{ padding: '0.2rem 0.6rem', borderRadius: '2rem', fontSize: '0.65rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-secondary)' }}>
+                  {ent}
+                </span>
+              ))}
+              {nlpData.keywords?.map((kw, i) => (
+                <span key={i} style={{ padding: '0.2rem 0.6rem', borderRadius: '2rem', fontSize: '0.65rem', background: 'rgba(255, 255, 255, 0.03)', border: '1px dotted rgba(255, 255, 255, 0.1)', color: 'rgba(255,255,255,0.4)' }}>
+                  # {kw}
+                </span>
+              ))}
+            </motion.div>
+          )}
 
           {summary && (
             <motion.div
