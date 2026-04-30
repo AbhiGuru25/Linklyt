@@ -2,7 +2,7 @@
 
 Linklyt is a high-performance **RAG (Retrieval-Augmented Generation)** application that allows you to scrape, index, and chat with any website in seconds. Powered by the world's fastest inference engine and robust cloud scraping, Linklyt turns static web pages into interactive knowledge bases.
 
-![Linklyt Dashboard](https://linklyt-tau.vercel.app/og-image.png) *(Note: Replace with your actual OG image or screenshot)*
+![Linklyt Dashboard](./dashboard.png)
 
 ## 🚀 Key Features
 
