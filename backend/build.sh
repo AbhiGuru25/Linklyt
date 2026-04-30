@@ -4,6 +4,3 @@ set -o errexit
 
 # Install python dependencies
 pip install -r requirements.txt
-
-# Install Playwright browsers (without system deps as sudo is not allowed)
-playwright install chromium
