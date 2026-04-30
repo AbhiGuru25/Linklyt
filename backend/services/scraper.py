@@ -23,25 +23,32 @@ def _firecrawl_scrape(url: str) -> tuple[Optional[str], Optional[str]]:
     app = FirecrawlApp(api_key=api_key)
     logger.info(f"🔥 Scraping {url} via Firecrawl...")
     
-    # Use scrape_url to get the markdown content directly
-    scrape_result = app.scrape_url(url, params={'formats': ['markdown']})
+    # Use scrape to get the markdown content directly
+    scrape_result = app.scrape(url=url, formats=['markdown'])
     
-    # Handle response depending on SDK version returns
-    if isinstance(scrape_result, dict):
+    # The new SDK returns an object with attributes
+    if hasattr(scrape_result, 'markdown'):
+        text = scrape_result.markdown
+        title = None
+        if hasattr(scrape_result, 'metadata'):
+            if hasattr(scrape_result.metadata, 'title'):
+                title = scrape_result.metadata.title
+            elif isinstance(scrape_result.metadata, dict):
+                title = scrape_result.metadata.get('title')
+                
+    # Fallback for dict responses (older SDKs or raw API responses)
+    elif isinstance(scrape_result, dict):
         if 'data' in scrape_result and isinstance(scrape_result['data'], dict):
-            # Format returned by some SDK versions
             text = scrape_result['data'].get('markdown')
             metadata = scrape_result['data'].get('metadata', {})
         else:
-            # Format returned by newer SDK versions
             text = scrape_result.get('markdown')
             metadata = scrape_result.get('metadata', {})
+        title = metadata.get('title')
     else:
         logger.error(f"❌ Unexpected Firecrawl response type: {type(scrape_result)}")
         return None, None
         
-    title = metadata.get('title')
-    
     if text and len(text.strip()) > 50:
         logger.info(f"✅ Firecrawl success: {len(text)} chars scraped.")
         return text.strip(), title
