@@ -277,26 +277,47 @@ const Demo = ({ initialUrl, onUrlChange }) => {
 
                 {answer && !isAnswering && !error && (
                   <div style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'flex-end' }}>
-                    <button 
-                      onClick={handleAutomate}
-                      disabled={isAutomating}
-                      style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '0.5rem', 
-                        background: automationSuccess ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                        border: automationSuccess ? '1px solid #22c55e' : '1px solid rgba(255, 255, 255, 0.1)',
-                        color: automationSuccess ? '#22c55e' : 'var(--text-secondary)',
-                        padding: '0.4rem 0.8rem',
-                        borderRadius: '0.6rem',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      {isAutomating ? 'Sending...' : automationSuccess ? '✓ Sent to n8n' : '⚡ Automate'}
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button 
+                        onClick={() => onExportReport({ url, summary, answer, nlp_data: nlpData })}
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '0.5rem', 
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          color: 'var(--text-secondary)',
+                          padding: '0.4rem 0.8rem',
+                          borderRadius: '0.6rem',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        📄 Report
+                      </button>
+                      <button 
+                        onClick={handleAutomate}
+                        disabled={isAutomating}
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '0.5rem', 
+                          background: automationSuccess ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                          border: automationSuccess ? '1px solid #22c55e' : '1px solid rgba(255, 255, 255, 0.1)',
+                          color: automationSuccess ? '#22c55e' : 'var(--text-secondary)',
+                          padding: '0.4rem 0.8rem',
+                          borderRadius: '0.6rem',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {isAutomating ? 'Sending...' : automationSuccess ? '✓ Sent' : '⚡ Automate'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </motion.div>

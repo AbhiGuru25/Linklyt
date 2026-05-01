@@ -8,10 +8,12 @@ import SettingsModal from './components/SettingsModal';
 import Pricing from './components/Pricing';
 import Footer from './components/Footer';
 import History from './components/History';
+import ReportView from './components/ReportView';
 
 function App() {
   const [sharedUrl, setSharedUrl] = React.useState('');
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [reportData, setReportData] = React.useState(null);
 
   const handleHeroAnalyse = (url) => {
     setSharedUrl(url);
@@ -21,6 +23,10 @@ function App() {
     }
   };
 
+  if (reportData) {
+    return <ReportView data={reportData} onBack={() => setReportData(null)} />;
+  }
+
   return (
     <div className="min-h-screen">
       <Navbar onOpenSettings={() => setIsSettingsOpen(true)} />
@@ -29,7 +35,7 @@ function App() {
       <Mockup />
       <Features />
       <History onSelectUrl={handleHeroAnalyse} />
-      <Demo initialUrl={sharedUrl} onUrlChange={setSharedUrl} />
+      <Demo initialUrl={sharedUrl} onUrlChange={setSharedUrl} onExportReport={setReportData} />
       <Pricing />
       <Footer />
     </div>
