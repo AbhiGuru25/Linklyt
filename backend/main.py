@@ -102,33 +102,44 @@ async def health():
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)
-async def analyze(req: AnalyzeRequest):
-    url_str = str(req.url)
+async def analyze(request: AnalyzeRequest):
+    # Support multiple URLs separated by commas
+    urls = [u.strip() for u in request.url.split(',') if u.strip()]
+    if not urls:
+        raise HTTPException(status_code=400, detail="No valid URLs provided.")
+    
+    # Process all URLs (in parallel for speed)
+    async def process_single_url(u):
+        text, title = await scrape_url(u)
+        if text:
+            chunks, summary, nlp = await ingest(u, text)
+            # Truncate title for DB stability
+            safe_title = (title or u)[:200]
+            await cache_url(u, safe_title)
+            return {"url": u, "chunks": chunks, "text": text}
+        return None
 
-    if not req.force_refresh and await is_url_cached(url_str):
-        return AnalyzeResponse(
-            url=url_str,
-            chunks_indexed=0,
-            cached=True,
-            message="URL already indexed. Ready to answer questions.",
-        )
+    results = await asyncio.gather(*[process_single_url(u) for u in urls])
+    results = [r for r in results if r]
 
-    text, title = await scrape_url(url_str)
-    if not text:
-        raise HTTPException(status_code=422, detail="Could not extract text.")
+    if not results:
+        raise HTTPException(status_code=422, detail="Could not extract text from any provided URLs.")
 
-    chunks, summary, nlp_data = await ingest(url_str, text)
-    # Truncate title for DB stability
-    safe_title = (title or url_str)[:200]
-    await cache_url(url_str, safe_title)
-
+    # Combine data for synthesis
+    total_chunks = sum(r['chunks'] for r in results)
+    combined_text = "\n\n".join([f"SOURCE: {r['url']}\n{r['text'][:2000]}" for r in results])
+    
+    # Generate a synthesized summary and NLP data across all sources
+    summary = await summarize_text(combined_text)
+    nlp_data = await extract_nlp_insights(combined_text)
+    
     return AnalyzeResponse(
-        url=url_str,
-        chunks_indexed=chunks,
+        url=", ".join([r['url'] for r in results]),
+        chunks_indexed=total_chunks,
         cached=False,
         summary=summary,
         nlp_data=nlp_data,
-        message=f"Success! Indexed {chunks} chunks and generated a summary.",
+        message=f"Success! Synthesized intelligence from {len(results)} sources ({total_chunks} total chunks).",
     )
 
 
